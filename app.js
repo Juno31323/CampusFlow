@@ -193,22 +193,33 @@ async function init() {
   updateAuthAvailability();
 
   const config = getSupabaseConfig();
-  if (config) {
-    try {
-      initSupabaseClient(config);
-      const {
-        data: { session },
-      } = await state.supabase.auth.getSession();
-      if (session) {
-        state.mode = 'supabase';
-        state.session = session;
+  if (!config) {
+    showAuth();
+    return;
+  }
+
+  try {
+    initSupabaseClient(config);
+
+    const {
+      data: { session },
+    } = await state.supabase.auth.getSession();
+
+    if (session) {
+      state.mode = 'supabase';
+      state.session = session;
+      showApp(); // 먼저 앱 진입
+
+      try {
         await hydrateRemoteState();
-        showApp();
-        return;
+        renderAll();
+      } catch (error) {
+        showToast(`데이터 동기화 오류: ${friendlyError(error)}`);
       }
-    } catch (error) {
-      showToast(`Supabase 초기화 오류: ${friendlyError(error)}`);
+      return;
     }
+  } catch (error) {
+    showToast(`Supabase 초기화 오류: ${friendlyError(error)}`);
   }
 
   showAuth();
@@ -377,15 +388,19 @@ function initSupabaseClient(config) {
 
   const { data } = state.supabase.auth.onAuthStateChange(async (_event, session) => {
     state.session = session;
+  
     if (!session) {
-      if (state.mode === 'supabase') showAuth();
+      state.mode = 'guest';
+      showAuth();
       return;
     }
-
+  
     state.mode = 'supabase';
+    showApp(); // 세션 있으면 먼저 앱 유지
+  
     try {
       await hydrateRemoteState();
-      showApp();
+      renderAll();
     } catch (error) {
       showToast(`데이터 동기화 오류: ${friendlyError(error)}`);
     }
