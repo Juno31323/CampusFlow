@@ -208,7 +208,7 @@ async function init() {
     if (session) {
       state.mode = 'supabase';
       state.session = session;
-      showApp(); // 먼저 앱 진입
+      showApp();
 
       try {
         await hydrateRemoteState();
@@ -396,7 +396,7 @@ function initSupabaseClient(config) {
     }
   
     state.mode = 'supabase';
-    showApp(); // 세션 있으면 먼저 앱 유지
+    showApp();
   
     try {
       await hydrateRemoteState();
