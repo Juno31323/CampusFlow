@@ -386,12 +386,14 @@ function initSupabaseClient(config) {
     },
   });
 
-  const { data } = state.supabase.auth.onAuthStateChange(async (_event, session) => {
+  const { data } = state.supabase.auth.onAuthStateChange(async (event, session) => {
     state.session = session;
   
     if (!session) {
       state.mode = 'guest';
-      showAuth();
+      refs.authScreen.classList.remove('hidden');
+      refs.appShell.classList.add('hidden');
+      updateAuthAvailability();
       return;
     }
   
@@ -476,6 +478,11 @@ function persistDemoState() {
 }
 
 function showAuth() {
+  if (state.session) {
+    showApp();
+    return;
+  }
+
   state.mode = state.mode === 'demo' ? 'demo' : 'guest';
   refs.authScreen.classList.remove('hidden');
   refs.appShell.classList.add('hidden');
