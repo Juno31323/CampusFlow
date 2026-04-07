@@ -39,7 +39,7 @@ const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
 const DEPLOY_SUPABASE_CONFIG = {
   url: 'https://vdjlaiyoyhbtyapbakld.supabase.co',
-  key: 'PASTE_YOUR_PUBLISHABLE_KEY_HERE',
+  key: 'sb_publishable_n4HkO6XMHZPoyF9z3lZymQ_iEf0xDZO',
 };
 
 const state = {
