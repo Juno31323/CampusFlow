@@ -55,6 +55,8 @@ const state = {
   assignments: [],
   exams: [],
   calendarCursor: startOfMonth(new Date()),
+  isBooting: true,
+  isHydrating: false,
 };
 
 const refs = {
@@ -186,6 +188,8 @@ demoSeed.exams = [
   },
 ];
 
+window.__campusflow = { state, refs };
+
 init();
 
 async function init() {
@@ -194,6 +198,7 @@ async function init() {
 
   const config = getSupabaseConfig();
   if (!config) {
+    state.isBooting = false;
     showAuth();
     return;
   }
@@ -203,7 +208,10 @@ async function init() {
 
     const {
       data: { session },
+      error,
     } = await state.supabase.auth.getSession();
+
+    if (error) throw error;
 
     if (session) {
       state.mode = 'supabase';
@@ -213,15 +221,19 @@ async function init() {
       try {
         await hydrateRemoteState();
         renderAll();
-      } catch (error) {
-        showToast(`데이터 동기화 오류: ${friendlyError(error)}`);
+      } catch (hydrateError) {
+        console.error('Initial hydrate failed', hydrateError);
+        showToast(`데이터 동기화 오류: ${friendlyError(hydrateError)}`);
       }
+      state.isBooting = false;
       return;
     }
   } catch (error) {
+    console.error('Init failed', error);
     showToast(`Supabase 초기화 오류: ${friendlyError(error)}`);
   }
 
+  state.isBooting = false;
   showAuth();
 }
 
@@ -231,7 +243,15 @@ function bindStaticEvents() {
   });
 
   refs.enterDemoBtn.addEventListener('click', enterDemoMode);
-  refs.signOutBtn.addEventListener('click', handleSignOut);
+
+  refs.signOutBtn.addEventListener('click', async () => {
+    try {
+      await handleSignOut();
+    } catch (error) {
+      console.error('Sign out failed', error);
+      showToast(`로그아웃 오류: ${friendlyError(error)}`);
+    }
+  });
 
   refs.navButtons.forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));
@@ -257,6 +277,7 @@ function bindStaticEvents() {
       if (kind === 'exam') await handleExamSubmit(form);
       if (kind === 'profile') await handleProfileSubmit(form);
     } catch (error) {
+      console.error(`Form submit failed: ${kind}`, error);
       showToast(friendlyError(error));
     }
   });
@@ -307,6 +328,7 @@ function bindStaticEvents() {
         enterDemoMode();
       }
     } catch (error) {
+      console.error(`Action failed: ${action}`, error);
       showToast(friendlyError(error));
     }
   });
@@ -387,23 +409,29 @@ function initSupabaseClient(config) {
   });
 
   const { data } = state.supabase.auth.onAuthStateChange(async (event, session) => {
-    state.session = session;
-  
+    state.session = session ?? null;
+
+    if (state.isBooting && event === 'INITIAL_SESSION') {
+      return;
+    }
+
     if (!session) {
+      clearAppState();
       state.mode = 'guest';
       refs.authScreen.classList.remove('hidden');
       refs.appShell.classList.add('hidden');
       updateAuthAvailability();
       return;
     }
-  
+
     state.mode = 'supabase';
     showApp();
-  
+
     try {
       await hydrateRemoteState();
       renderAll();
     } catch (error) {
+      console.error(`Auth sync failed: ${event}`, error);
       showToast(`데이터 동기화 오류: ${friendlyError(error)}`);
     }
   });
@@ -413,28 +441,35 @@ function initSupabaseClient(config) {
 }
 
 async function hydrateRemoteState() {
+  if (state.isHydrating) return;
   const uid = state.session?.user?.id;
   if (!uid) return;
 
-  const [profileResult, coursesResult, noticesResult, assignmentsResult, examsResult] = await Promise.all([
-    state.supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
-    state.supabase.from('courses').select('*').order('day_of_week', { ascending: true }).order('start_time', { ascending: true }),
-    state.supabase.from('notices').select('*').order('created_at', { ascending: false }),
-    state.supabase.from('assignments').select('*').order('due_at', { ascending: true }),
-    state.supabase.from('exams').select('*').order('exam_at', { ascending: true }),
-  ]);
+  state.isHydrating = true;
+  try {
+    const [profileResult, coursesResult, noticesResult, assignmentsResult, examsResult] = await Promise.all([
+      state.supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      state.supabase.from('courses').select('*').order('day_of_week', { ascending: true }).order('start_time', { ascending: true }),
+      state.supabase.from('notices').select('*').order('created_at', { ascending: false }),
+      state.supabase.from('assignments').select('*').order('due_at', { ascending: true }),
+      state.supabase.from('exams').select('*').order('exam_at', { ascending: true }),
+    ]);
 
-  const errors = [profileResult.error, coursesResult.error, noticesResult.error, assignmentsResult.error, examsResult.error].filter(Boolean);
-  if (errors.length) throw errors[0];
+    const errors = [profileResult.error, coursesResult.error, noticesResult.error, assignmentsResult.error, examsResult.error].filter(Boolean);
+    if (errors.length) throw errors[0];
 
-  state.profile = profileResult.data || {};
-  state.courses = coursesResult.data || [];
-  state.notices = noticesResult.data || [];
-  state.assignments = assignmentsResult.data || [];
-  state.exams = examsResult.data || [];
+    state.profile = profileResult.data || {};
+    state.courses = coursesResult.data || [];
+    state.notices = noticesResult.data || [];
+    state.assignments = assignmentsResult.data || [];
+    state.exams = examsResult.data || [];
+  } finally {
+    state.isHydrating = false;
+  }
 }
 
 function enterDemoMode() {
+  clearAppState();
   state.mode = 'demo';
   state.session = null;
   loadDemoState();
@@ -475,6 +510,14 @@ function persistDemoState() {
     exams: state.exams,
   };
   localStorage.setItem(STORAGE_KEYS.demo, JSON.stringify(payload));
+}
+
+function clearAppState() {
+  state.profile = {};
+  state.courses = [];
+  state.notices = [];
+  state.assignments = [];
+  state.exams = [];
 }
 
 function showAuth() {
@@ -1003,7 +1046,6 @@ function renderSettings() {
   `;
 }
 
-
 function renderStatCard(label, value, description) {
   return `
     <article class="card stat-card">
@@ -1308,16 +1350,28 @@ async function deleteRecord(table, id) {
 
 async function handleSignOut() {
   if (state.mode === 'supabase' && state.supabase) {
-    const { error } = await state.supabase.auth.signOut();
-    if (error) throw error;
-    state.session = null;
+    try {
+      const { error } = await state.supabase.auth.signOut();
+      if (error) throw error;
+    } finally {
+      state.session = null;
+      state.mode = 'guest';
+      clearAppState();
+      refs.appShell.classList.add('hidden');
+      refs.authScreen.classList.remove('hidden');
+      updateAuthAvailability();
+    }
+
     showToast('로그아웃되었습니다.');
-    showAuth();
     return;
   }
 
+  state.session = null;
+  state.mode = 'guest';
+  clearAppState();
   refs.appShell.classList.add('hidden');
   refs.authScreen.classList.remove('hidden');
+  updateAuthAvailability();
   showToast('데모 화면을 닫았습니다.');
 }
 
@@ -1338,7 +1392,6 @@ function updateAuthAvailability() {
     ? '회원가입 또는 로그인 후 바로 CampusFlow를 사용할 수 있습니다.'
     : 'app.js 상단의 DEPLOY_SUPABASE_CONFIG에 Project URL과 Publishable Key를 입력한 뒤 다시 배포하세요.';
 }
-
 
 function getTodaySchedule() {
   const now = new Date();
@@ -1376,23 +1429,27 @@ function getAllEvents() {
       course: getCourseName(item.course_id),
     }));
 
-  const assignmentEvents = state.assignments.map((item) => ({
-    date: item.due_at,
-    title: item.title,
-    label: `과제 · ${item.title}`,
-    type: 'assignment',
-    typeLabel: '과제',
-    course: getCourseName(item.course_id),
-  }));
+  const assignmentEvents = state.assignments
+    .filter((item) => item.due_at)
+    .map((item) => ({
+      date: item.due_at,
+      title: item.title,
+      label: `과제 · ${item.title}`,
+      type: 'assignment',
+      typeLabel: '과제',
+      course: getCourseName(item.course_id),
+    }));
 
-  const examEvents = state.exams.map((item) => ({
-    date: item.exam_at,
-    title: item.title,
-    label: `시험 · ${item.title}`,
-    type: 'exam',
-    typeLabel: '시험',
-    course: getCourseName(item.course_id),
-  }));
+  const examEvents = state.exams
+    .filter((item) => item.exam_at)
+    .map((item) => ({
+      date: item.exam_at,
+      title: item.title,
+      label: `시험 · ${item.title}`,
+      type: 'exam',
+      typeLabel: '시험',
+      course: getCourseName(item.course_id),
+    }));
 
   return [...noticeEvents, ...assignmentEvents, ...examEvents]
     .filter((item) => item.date)
@@ -1448,6 +1505,9 @@ function friendlyError(error) {
   }
   if (message.includes('Invalid API key')) {
     return 'Publishable Key가 올바르지 않습니다.';
+  }
+  if (message.includes('JWT') || message.includes('session')) {
+    return '세션이 만료되었거나 인증 상태가 꼬였습니다. 다시 로그인해 주세요.';
   }
   return message;
 }
