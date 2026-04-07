@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CampusFlow — 대학생 학사 비서</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="toast" class="toast" hidden></div>
+
+    <div id="auth-screen" class="auth-screen">
+      <div class="auth-layout">
+        <section class="auth-hero card">
+          <span class="pill">Supabase 기반 학사 관리</span>
+          <h1>CampusFlow</h1>
+          <p class="lead">
+            공지, 과제, 시험, 시간표를 한곳에서 정리하는 대학생용 웹서비스입니다.
+            실제 Supabase 연결 전에도 데모 모드로 바로 확인할 수 있습니다.
+          </p>
+
+          <div class="feature-list">
+            <article>
+              <h3>대시보드</h3>
+              <p>오늘 일정, 마감 임박 과제, 중요 공지를 한 화면에서 확인</p>
+            </article>
+            <article>
+              <h3>과목 기반 관리</h3>
+              <p>공지·과제·시험이 모두 과목과 연결되는 구조</p>
+            </article>
+            <article>
+              <h3>캘린더</h3>
+              <p>과제 마감, 시험 일정, 공지 마감일을 월별로 보기</p>
+            </article>
+          </div>
+
+          <div class="auth-actions">
+            <button id="enter-demo-btn" class="button button-secondary">데모 모드로 먼저 보기</button>
+          </div>
+        </section>
+
+        <section class="auth-panel card">
+          <div class="auth-tabs" role="tablist" aria-label="로그인 탭">
+            <button class="tab-button active" data-auth-tab="signin">로그인</button>
+            <button class="tab-button" data-auth-tab="signup">회원가입</button>
+          </div>
+
+          <form id="signin-form" class="auth-form" data-form="signin">
+            <label>
+              <span>이메일</span>
+              <input type="email" name="email" placeholder="you@example.com" required />
+            </label>
+            <label>
+              <span>비밀번호</span>
+              <input type="password" name="password" placeholder="8자 이상" required />
+            </label>
+            <button type="submit" class="button button-primary auth-submit">Supabase로 로그인</button>
+          </form>
+
+          <form id="signup-form" class="auth-form hidden" data-form="signup">
+            <label>
+              <span>이름</span>
+              <input type="text" name="full_name" placeholder="홍길동" required />
+            </label>
+            <label>
+              <span>이메일</span>
+              <input type="email" name="email" placeholder="you@example.com" required />
+            </label>
+            <label>
+              <span>비밀번호</span>
+              <input type="password" name="password" placeholder="8자 이상" required />
+            </label>
+            <button type="submit" class="button button-primary auth-submit">계정 만들기</button>
+          </form>
+
+          <div class="auth-divider"><span>연결 설정</span></div>
+
+          <form id="supabase-config-form" class="auth-form" data-form="supabase-config">
+            <label>
+              <span>Supabase URL</span>
+              <input type="url" name="url" placeholder="https://your-project.supabase.co" required />
+            </label>
+            <label>
+              <span>Publishable Key</span>
+              <input type="text" name="key" placeholder="sb_publishable_xxx" required />
+            </label>
+            <div class="helper-text">
+              프로젝트 URL과 Publishable Key를 저장하면 브라우저에서 바로 Supabase Auth + Database를 사용할 수 있습니다.
+            </div>
+            <button type="submit" class="button button-secondary">연결 정보 저장</button>
+          </form>
+
+          <div id="auth-hint" class="auth-hint">
+            Supabase 연결 정보를 먼저 저장하면 로그인과 회원가입이 활성화됩니다.
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="app-shell" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">CF</div>
+          <div>
+            <div class="brand-name">CampusFlow</div>
+            <div class="brand-sub">대학생 학사 비서</div>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button class="nav-button active" data-view="dashboard">대시보드</button>
+          <button class="nav-button" data-view="calendar">캘린더</button>
+          <button class="nav-button" data-view="notices">공지</button>
+          <button class="nav-button" data-view="assignments">과제</button>
+          <button class="nav-button" data-view="exams">시험</button>
+          <button class="nav-button" data-view="courses">과목</button>
+          <button class="nav-button" data-view="settings">설정</button>
+        </nav>
+
+        <div class="sidebar-footer card muted-card">
+          <div id="connection-chip" class="status-chip">데모 모드</div>
+          <div id="user-summary" class="user-summary">비로그인</div>
+          <button id="sign-out-btn" class="button button-secondary sidebar-signout">로그아웃</button>
+        </div>
+      </aside>
+
+      <section class="main-shell">
+        <header class="topbar card">
+          <div>
+            <div id="page-kicker" class="page-kicker">대시보드</div>
+            <h2 id="page-title" class="page-title">오늘 해야 할 일을 빠르게 확인하세요</h2>
+          </div>
+          <div class="quick-actions">
+            <button class="button button-secondary" data-view-shortcut="courses">과목 추가</button>
+            <button class="button button-secondary" data-view-shortcut="assignments">과제 추가</button>
+            <button class="button button-secondary" data-view-shortcut="exams">시험 추가</button>
+            <button class="button button-primary" data-view-shortcut="notices">공지 추가</button>
+          </div>
+        </header>
+
+        <main id="view-root" class="view-root"></main>
+      </section>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
