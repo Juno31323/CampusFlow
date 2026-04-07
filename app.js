@@ -2,7 +2,6 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const STORAGE_KEYS = {
   demo: 'campusflow_demo_state_v1',
-  config: 'campusflow_supabase_config_v1',
 };
 
 const PAGE_META = {
@@ -32,18 +31,22 @@ const PAGE_META = {
   },
   settings: {
     kicker: '설정',
-    title: '프로필과 Supabase 연결 정보를 관리하세요',
+    title: '프로필과 서비스 정보를 관리하세요',
   },
 };
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+const DEPLOY_SUPABASE_CONFIG = {
+  url: 'https://vdjlaiyoyhbtyapbakld.supabase.co',
+  key: 'PASTE_YOUR_PUBLISHABLE_KEY_HERE',
+};
 
 const state = {
   view: 'dashboard',
   authTab: 'signin',
   mode: 'guest',
   supabase: null,
-  supabaseConfigKey: null,
   authSubscription: null,
   session: null,
   profile: {},
@@ -62,7 +65,6 @@ const refs = {
   authForms: {
     signin: document.getElementById('signin-form'),
     signup: document.getElementById('signup-form'),
-    config: document.getElementById('supabase-config-form'),
   },
   authTabs: [...document.querySelectorAll('[data-auth-tab]')],
   navButtons: [...document.querySelectorAll('[data-view]')],
@@ -188,7 +190,6 @@ init();
 
 async function init() {
   bindStaticEvents();
-  hydrateConfigInputs();
   updateAuthAvailability();
 
   const config = getSupabaseConfig();
@@ -239,13 +240,11 @@ function bindStaticEvents() {
     try {
       if (kind === 'signin') await handleSignIn(form);
       if (kind === 'signup') await handleSignUp(form);
-      if (kind === 'supabase-config') await handleSupabaseConfig(form, false);
       if (kind === 'course') await handleCourseSubmit(form);
       if (kind === 'notice') await handleNoticeSubmit(form);
       if (kind === 'assignment') await handleAssignmentSubmit(form);
       if (kind === 'exam') await handleExamSubmit(form);
       if (kind === 'profile') await handleProfileSubmit(form);
-      if (kind === 'settings-supabase') await handleSupabaseConfig(form, true);
     } catch (error) {
       showToast(friendlyError(error));
     }
@@ -357,32 +356,8 @@ async function handleSignUp(form) {
   form.reset();
 }
 
-async function handleSupabaseConfig(form, rerender) {
-  const formData = new FormData(form);
-  const url = String(formData.get('url') || '').trim();
-  const key = String(formData.get('key') || '').trim();
-
-  if (!url || !key) {
-    showToast('Supabase URL과 Publishable Key를 입력해 주세요.');
-    return;
-  }
-
-  const config = { url, key };
-  localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(config));
-  hydrateConfigInputs();
-  updateAuthAvailability();
-  initSupabaseClient(config);
-  showToast('Supabase 연결 정보가 저장되었습니다.');
-
-  if (rerender && state.mode === 'supabase') {
-    renderView();
-  }
-}
-
 function initSupabaseClient(config) {
-  const configKey = `${config.url}::${config.key}`;
-
-  if (state.supabase && state.supabaseConfigKey === configKey) {
+  if (state.supabase) {
     return state.supabase;
   }
 
@@ -399,7 +374,6 @@ function initSupabaseClient(config) {
       detectSessionInUrl: true,
     },
   });
-  state.supabaseConfigKey = configKey;
 
   const { data } = state.supabase.auth.onAuthStateChange(async (_event, session) => {
     state.session = session;
@@ -950,8 +924,6 @@ function renderCourses() {
 }
 
 function renderSettings() {
-  const config = getSupabaseConfig() || { url: '', key: '' };
-
   return `
     <section class="settings-grid">
       <article class="card section-card">
@@ -977,21 +949,13 @@ function renderSettings() {
       </article>
 
       <article class="card section-card">
-        <h3>Supabase 연결 정보</h3>
-        <p>URL과 Publishable Key를 저장하면 브라우저에서 바로 Auth + Database를 사용할 수 있습니다.</p>
-        <form class="inline-form" data-form="settings-supabase">
-          <label>
-            <span>Supabase URL</span>
-            <input type="url" name="url" value="${escapeAttribute(config.url || '')}" placeholder="https://your-project.supabase.co" />
-          </label>
-          <label>
-            <span>Publishable Key</span>
-            <input name="key" value="${escapeAttribute(config.key || '')}" placeholder="sb_publishable_xxx" />
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="button button-secondary">연결 정보 저장</button>
-          </div>
-        </form>
+        <h3>서비스 연결 상태</h3>
+        <p>이 배포본은 CampusFlow Supabase 프로젝트에 미리 연결되어 있습니다. 사용자는 별도의 URL이나 Key 입력 없이 회원가입과 로그인을 할 수 있습니다.</p>
+        <div class="list">
+          <div class="list-item">프로젝트 URL 고정 연결</div>
+          <div class="list-item">Publishable Key만 프론트에 사용</div>
+          <div class="list-item">RLS로 사용자별 데이터 분리</div>
+        </div>
       </article>
 
       <article class="card section-card">
@@ -1005,10 +969,7 @@ function renderSettings() {
 
       <article class="card section-card">
         <h3>다음 단계 제안</h3>
-        <p>
-          현재 버전은 MVP에 맞춘 구조입니다. 다음 단계로는 웹 푸시 알림, 공지 AI 요약,
-          공지 본문에서 날짜 자동 추출 기능을 붙이기 좋습니다.
-        </p>
+        <p>현재 버전은 MVP에 맞춘 구조입니다. 다음 단계로는 웹 푸시 알림, 공지 AI 요약, 공지 본문에서 날짜 자동 추출 기능을 붙이기 좋습니다.</p>
         <div class="list">
           <div class="list-item">공지 자동 요약</div>
           <div class="list-item">신청기간 자동 일정화</div>
@@ -1019,6 +980,7 @@ function renderSettings() {
     </section>
   `;
 }
+
 
 function renderStatCard(label, value, description) {
   return `
@@ -1338,39 +1300,23 @@ async function handleSignOut() {
 }
 
 function getSupabaseConfig() {
-  const raw = localStorage.getItem(STORAGE_KEYS.config);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
+  if (!DEPLOY_SUPABASE_CONFIG.url || !DEPLOY_SUPABASE_CONFIG.key || DEPLOY_SUPABASE_CONFIG.key.includes('PASTE_YOUR_PUBLISHABLE_KEY_HERE')) {
     return null;
   }
-}
 
-function hydrateConfigInputs() {
-  const config = getSupabaseConfig();
-  const forms = [refs.authForms.config];
-  forms.forEach((form) => {
-    if (!form) return;
-    const urlInput = form.querySelector('input[name="url"]');
-    const keyInput = form.querySelector('input[name="key"]');
-    if (urlInput && config?.url) urlInput.value = config.url;
-    if (keyInput && config?.key) keyInput.value = config.key;
-  });
+  return {
+    url: DEPLOY_SUPABASE_CONFIG.url,
+    key: DEPLOY_SUPABASE_CONFIG.key,
+  };
 }
 
 function updateAuthAvailability() {
   const hasConfig = Boolean(getSupabaseConfig());
   refs.authHint.textContent = hasConfig
-    ? '연결 정보가 저장되었습니다. 로그인하거나 회원가입을 진행하세요.'
-    : 'Supabase 연결 정보를 먼저 저장하면 로그인과 회원가입이 활성화됩니다.';
-
-  [...document.querySelectorAll('.auth-submit')].forEach((button) => {
-    button.disabled = !hasConfig;
-    button.style.opacity = hasConfig ? '1' : '0.5';
-    button.style.cursor = hasConfig ? 'pointer' : 'not-allowed';
-  });
+    ? '회원가입 또는 로그인 후 바로 CampusFlow를 사용할 수 있습니다.'
+    : 'app.js 상단의 DEPLOY_SUPABASE_CONFIG에 Project URL과 Publishable Key를 입력한 뒤 다시 배포하세요.';
 }
+
 
 function getTodaySchedule() {
   const now = new Date();
